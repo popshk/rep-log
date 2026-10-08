@@ -20,7 +20,7 @@ services:
       NODE_ROLE: SECONDARY
       NODE_ID: secondary-1
       PORT: "8080"
-      REPLICATION_DELAY_MS: "0"
+      REPLICATION_DELAY_MS: "5000"
 
   secondary-2:
     build: .
@@ -30,4 +30,4 @@ services:
       NODE_ROLE: SECONDARY
       NODE_ID: secondary-2
       PORT: "8080"
-      REPLICATION_DELAY_MS: "0"
+      REPLICATION_DELAY_MS: "2500"
