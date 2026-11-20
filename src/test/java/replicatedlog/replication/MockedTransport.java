@@ -6,16 +6,21 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MockedTransport implements Transport {
     private final ConcurrentHashMap<Route, Duration> delays = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, SecondaryNode> secondaries = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Route, Reorder> reorders = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, List<Long>> deliveredSequences = new ConcurrentHashMap<>();
+    private final Set<Route> dropped = ConcurrentHashMap.newKeySet();
+    private final Set<String> unreachable = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<Route, AtomicInteger> attempts = new ConcurrentHashMap<>();
 
     public void register(SecondaryNode node) {
         secondaries.put(node.id().id(), node);
@@ -27,6 +32,27 @@ public class MockedTransport implements Transport {
 
     public void removeDelay(NodeId from, NodeId to) {
         delays.remove(new Route(from.id(), to.id()));
+    }
+
+    public void dropMessage(NodeId from, NodeId to) {
+        dropped.add(new Route(from.id(), to.id()));
+    }
+
+    public void removeDrop(NodeId from, NodeId to) {
+        dropped.remove(new Route(from.id(), to.id()));
+    }
+
+    public void setUnreachable(NodeId to) {
+        unreachable.add(to.id());
+    }
+
+    public void setReachable(NodeId to) {
+        unreachable.remove(to.id());
+    }
+
+    public int attemptCount(NodeId from, NodeId to) {
+        AtomicInteger count = attempts.get(new Route(from.id(), to.id()));
+        return count == null ? 0 : count.get();
     }
 
     /**
@@ -57,7 +83,17 @@ public class MockedTransport implements Transport {
     }
 
     @Override
+    public boolean probe(NodeId from, NodeId to) {
+        return !unreachable.contains(to.id());
+    }
+
+    @Override
     public void replicate(NodeId from, NodeId to, long sequence, String message) {
+        Route route = new Route(from.id(), to.id());
+        attempts.computeIfAbsent(route, ignored -> new AtomicInteger()).incrementAndGet();
+        if (dropped.contains(route) || unreachable.contains(to.id())) {
+            throw new IllegalStateException("message to " + to.id() + " was dropped");
+        }
         Pending held = enqueueIfReordering(from, to, sequence, message);
         if (held != null) {
             await(held);

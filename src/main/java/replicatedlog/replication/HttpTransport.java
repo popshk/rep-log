@@ -64,6 +64,28 @@ public class HttpTransport implements Transport {
         }
     }
 
+    @Override
+    public boolean probe(NodeId from, NodeId to) {
+        String url = secondaryUrls.get(to);
+        if (url == null) {
+            return false;
+        }
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url + "/health"))
+                    .timeout(Duration.ofSeconds(1))
+                    .GET()
+                    .build();
+            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            return response.statusCode() == 200;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     public static HttpTransport fromUrls(List<String> urls, HttpClient client) {
         Map<NodeId, String> mapping = new LinkedHashMap<>();
         for (String url : urls) {

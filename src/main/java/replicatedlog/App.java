@@ -45,12 +45,15 @@ public final class App {
 
         AppConfig config = AppConfig.fromEnv();
         logger.info(
-                "Starting {} node '{}' on port {} (secondaries={}, delayMs={})",
+                "Starting {} node '{}' on port {} (secondaries={}, delayMs={}, timeoutMs={}, retryMs={}, heartbeatMs={})",
                 config.role(),
                 config.nodeId(),
                 config.port(),
                 config.secondaryUrls(),
-                config.replicationDelayMs()
+                config.replicationDelayMs(),
+                config.replicationTimeout().toMillis(),
+                config.retryInterval().toMillis(),
+                config.heartbeatInterval().toMillis()
         );
 
         createApp(config).start("0.0.0.0", config.port());
@@ -67,7 +70,15 @@ public final class App {
             List<NodeId> secondaries = config.secondaryUrls().stream()
                     .map(HttpTransport::nodeIdFromUrl)
                     .toList();
-            replication = new ReplicationService(new NodeId(config.nodeId()), log, transport, secondaries);
+            replication = new ReplicationService(
+                    new NodeId(config.nodeId()),
+                    log,
+                    transport,
+                    secondaries,
+                    config.replicationTimeout(),
+                    config.retryInterval(),
+                    config.heartbeatInterval()
+            );
         }
         return createApp(config, log, replication, httpClient);
     }

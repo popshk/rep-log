@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import replicatedlog.config.AppConfig;
 import replicatedlog.config.NodeRole;
 import replicatedlog.log.InMemoryLog;
+import replicatedlog.replication.NoQuorumException;
 import replicatedlog.replication.ReplicationService;
 
 import java.util.Map;
@@ -21,8 +22,15 @@ public final class HttpApi {
         app.exception(IllegalArgumentException.class, (exception, ctx) ->
                 ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", exception.getMessage()))
         );
+        app.exception(NoQuorumException.class, (exception, ctx) ->
+                ctx.status(HttpStatus.SERVICE_UNAVAILABLE).json(Map.of("error", exception.getMessage()))
+        );
 
-        app.get("/health", ctx -> ctx.json(new HealthResponse(config.role().name(), config.nodeId())));
+        app.get("/health", ctx -> {
+            Map<String, String> secondaries = replication == null ? Map.of() : replication.secondaryHealth();
+            String status = replication != null && !replication.hasQuorum() ? "READ_ONLY" : "UP";
+            ctx.json(new HealthResponse(status, config.role().name(), config.nodeId(), secondaries));
+        });
 
         app.post("/echo", ctx -> {
             EchoRequest request = ctx.bodyAsClass(EchoRequest.class);
