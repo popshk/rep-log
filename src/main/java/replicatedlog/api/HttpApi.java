@@ -9,6 +9,8 @@ import replicatedlog.config.NodeRole;
 import replicatedlog.log.InMemoryLog;
 import replicatedlog.replication.ReplicationService;
 
+import java.util.Map;
+
 public final class HttpApi {
     private static final Logger logger = LoggerFactory.getLogger("replicatedlog.api");
 
@@ -16,6 +18,10 @@ public final class HttpApi {
     }
 
     public static void configure(Javalin app, AppConfig config, InMemoryLog log, ReplicationService replication) {
+        app.exception(IllegalArgumentException.class, (exception, ctx) ->
+                ctx.status(HttpStatus.BAD_REQUEST).json(Map.of("error", exception.getMessage()))
+        );
+
         app.get("/health", ctx -> ctx.json(new HealthResponse(config.role().name(), config.nodeId())));
 
         app.post("/echo", ctx -> {
@@ -35,18 +41,31 @@ public final class HttpApi {
                 if (request.text() == null || request.text().isBlank()) {
                     throw new IllegalArgumentException("Message text must not be blank");
                 }
-                logger.info("Client POST /messages '{}' on master {}", request.text(), config.nodeId());
-                replication.append(request.text());
+                int writeConcern = request.w() == null ? replication.fullWriteConcern() : request.w();
+                logger.info(
+                        "Client POST /messages '{}' w={} on master {}",
+                        request.text(),
+                        writeConcern,
+                        config.nodeId()
+                );
+                replication.append(request.text(), writeConcern);
                 ctx.status(HttpStatus.OK).json(new MessagesResponse(replication.list()));
             });
         } else {
             app.post("/replicate", ctx -> {
                 MessageRequest request = ctx.bodyAsClass(MessageRequest.class);
+                if (request.text() == null || request.text().isBlank()) {
+                    throw new IllegalArgumentException("Message text must not be blank");
+                }
+                if (request.seq() == null) {
+                    throw new IllegalArgumentException("Replicated message requires a sequence number");
+                }
                 if (config.replicationDelayMs() > 0) {
                     logger.info(
-                            "Secondary {} delaying replication of '{}' for {} ms",
+                            "Secondary {} delaying replication of '{}' (seq {}) for {} ms",
                             config.nodeId(),
                             request.text(),
+                            request.seq(),
                             config.replicationDelayMs()
                     );
                     try {
@@ -56,8 +75,13 @@ public final class HttpApi {
                         throw new RuntimeException(e);
                     }
                 }
-                log.append(request.text());
-                logger.info("Secondary {} appended '{}' and sending ACK", config.nodeId(), request.text());
+                log.append(request.seq(), request.text());
+                logger.info(
+                        "Secondary {} stored '{}' (seq {}) and sending ACK",
+                        config.nodeId(),
+                        request.text(),
+                        request.seq()
+                );
                 ctx.json(new AckResponse());
             });
         }

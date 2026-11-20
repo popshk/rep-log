@@ -63,7 +63,7 @@ class EchoAndApiTest {
         InMemoryLog log = new InMemoryLog();
         List<NodeId> secondaries = List.of(new NodeId("s1"), new NodeId("s2"));
         ConcurrentLinkedQueue<String> acked = new ConcurrentLinkedQueue<>();
-        Transport transport = (from, to, message) -> acked.add(to.id());
+        Transport transport = (from, to, sequence, message) -> acked.add(to.id());
         ReplicationService replication = new ReplicationService(new NodeId("master"), log, transport, secondaries);
 
         AppConfig config = new AppConfig(NodeRole.MASTER, "master", 8080, List.of(), 0);

@@ -30,6 +30,10 @@ public class MasterNode {
         replication.append(text);
     }
 
+    public void appendMsg(String text, int writeConcern) {
+        replication.append(text, writeConcern);
+    }
+
     public List<String> listMsgs() {
         return log.list();
     }

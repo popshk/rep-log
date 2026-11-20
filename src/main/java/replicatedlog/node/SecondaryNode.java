@@ -22,8 +22,8 @@ public class SecondaryNode {
         return id;
     }
 
-    public void append(String text) {
-        log.append(text);
+    public void append(long sequence, String text) {
+        log.append(sequence, text);
     }
 
     public List<String> listMsgs() {

@@ -28,14 +28,21 @@ public class HttpTransport implements Transport {
     }
 
     @Override
-    public void replicate(NodeId from, NodeId to, String message) {
+    public void replicate(NodeId from, NodeId to, long sequence, String message) {
         String url = secondaryUrls.get(to);
         if (url == null) {
             throw new IllegalStateException("Unknown secondary " + to.id());
         }
-        logger.info("Replicating '{}' from {} to {} ({})", message, from.id(), to.id(), url);
+        logger.info(
+                "Replicating '{}' (seq {}) from {} to {} ({})",
+                message,
+                sequence,
+                from.id(),
+                to.id(),
+                url
+        );
         try {
-            String body = JsonSupport.MAPPER.writeValueAsString(new MessageRequest(message));
+            String body = JsonSupport.MAPPER.writeValueAsString(new MessageRequest(message, null, sequence));
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url + "/replicate"))
                     .timeout(Duration.ofSeconds(60))
@@ -48,7 +55,7 @@ public class HttpTransport implements Transport {
                         "Replication to " + to.id() + " failed with HTTP " + response.statusCode()
                 );
             }
-            logger.info("Received ACK from {}", to.id());
+            logger.info("Received ACK from {} for seq {}", to.id(), sequence);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Replication to " + to.id() + " interrupted", e);
@@ -66,7 +73,14 @@ public class HttpTransport implements Transport {
     }
 
     public static NodeId nodeIdFromUrl(String url) {
-        String host = URI.create(url).getHost();
-        return new NodeId(host != null ? host : url);
+        URI uri = URI.create(url);
+        String host = uri.getHost();
+        if (host == null) {
+            return new NodeId(url);
+        }
+        if (uri.getPort() > 0) {
+            return new NodeId(host + ":" + uri.getPort());
+        }
+        return new NodeId(host);
     }
 }
